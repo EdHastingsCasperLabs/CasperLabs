@@ -6,11 +6,11 @@ use engine_shared::{
     stored_value::StoredValue,
     transform::Transform,
 };
-use types::{Key, ProtocolVersion};
+use types::{account::PublicKey, Key, ProtocolVersion, LOCAL_ID};
 
 use crate::{
     error::{self, in_memory},
-    global_state::{commit, CommitResult, StateProvider, StateReader},
+    global_state::{commit, CommitResult, LocalReader, StateProvider, StateReader},
     protocol_data::ProtocolData,
     protocol_data_store::in_memory::InMemoryProtocolDataStore,
     store::Store,
@@ -21,7 +21,7 @@ use crate::{
     trie::{operations::create_hashed_empty_trie, Trie},
     trie_store::{
         in_memory::InMemoryTrieStore,
-        operations::{self, read, ReadResult, WriteResult},
+        operations::{self, keys_with_prefix, read, ReadResult, WriteResult},
     },
 };
 
@@ -136,6 +136,31 @@ impl StateReader<Key, StoredValue> for InMemoryGlobalStateView {
         };
         txn.commit()?;
         Ok(ret)
+    }
+}
+
+impl LocalReader for InMemoryGlobalStateView {
+    fn local_keys(
+        &self,
+        correlation_id: CorrelationId,
+        key: PublicKey,
+    ) -> Result<Vec<Key>, Self::Error> {
+        let txn = self.environment.create_read_txn()?;
+        let key: Vec<u8> = {
+            let mut tmp = Vec::new();
+            tmp.push(LOCAL_ID);
+            tmp.extend_from_slice(key.as_bytes());
+            tmp
+        };
+        let ret: Result<Vec<Key>, in_memory::Error> = keys_with_prefix::<Key, StoredValue, _, _>(
+            correlation_id,
+            &txn,
+            self.store.deref(),
+            &self.root_hash,
+            &key,
+        )
+        .collect();
+        ret.map_err(Into::into)
     }
 }
 

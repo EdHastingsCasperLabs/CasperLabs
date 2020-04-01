@@ -13,10 +13,14 @@ use crate::{
     AccessRights, ContractRef, URef, UREF_SERIALIZED_LENGTH,
 };
 
-const ACCOUNT_ID: u8 = 0;
-const HASH_ID: u8 = 1;
-const UREF_ID: u8 = 2;
-const LOCAL_ID: u8 = 3;
+/// TODO
+pub const ACCOUNT_ID: u8 = 0;
+/// TODO
+pub const HASH_ID: u8 = 1;
+/// TODO
+pub const UREF_ID: u8 = 2;
+/// TODO
+pub const LOCAL_ID: u8 = 3;
 
 /// The number of bytes in a Blake2b hash
 pub const BLAKE2B_DIGEST_LENGTH: usize = 32;
@@ -85,6 +89,17 @@ impl Key {
             Key::Hash(_) => String::from("Key::Hash"),
             Key::URef(_) => String::from("Key::URef"),
             Key::Local { .. } => String::from("Key::Local"),
+        }
+    }
+
+    // This method is not intended to be used by third party crates.
+    #[doc(hidden)]
+    pub fn tag(&self) -> u8 {
+        match self {
+            Key::Account(_) => ACCOUNT_ID,
+            Key::Hash(_) => HASH_ID,
+            Key::URef(_) => UREF_ID,
+            Key::Local { .. } => LOCAL_ID,
         }
     }
 

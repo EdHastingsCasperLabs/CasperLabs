@@ -50,8 +50,8 @@ pub use cl_value::{CLTypeMismatch, CLValue, CLValueError};
 pub use contract_ref::ContractRef;
 #[doc(inline)]
 pub use key::{
-    Key, BLAKE2B_DIGEST_LENGTH, KEY_HASH_LENGTH, KEY_LOCAL_LENGTH, KEY_LOCAL_SEED_LENGTH,
-    KEY_UREF_SERIALIZED_LENGTH,
+    Key, ACCOUNT_ID, BLAKE2B_DIGEST_LENGTH, HASH_ID, KEY_HASH_LENGTH, KEY_LOCAL_LENGTH,
+    KEY_LOCAL_SEED_LENGTH, KEY_UREF_SERIALIZED_LENGTH, LOCAL_ID, UREF_ID,
 };
 pub use phase::{Phase, PHASE_SERIALIZED_LENGTH};
 pub use protocol_version::{ProtocolVersion, VersionCheckResult};

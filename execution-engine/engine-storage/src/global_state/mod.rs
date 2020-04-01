@@ -40,6 +40,14 @@ pub trait StateReader<K, V> {
     fn read(&self, correlation_id: CorrelationId, key: &K) -> Result<Option<V>, Self::Error>;
 }
 
+pub trait LocalReader: StateReader<Key, StoredValue> {
+    fn local_keys(
+        &self,
+        correlation_id: CorrelationId,
+        key: PublicKey,
+    ) -> Result<Vec<Key>, Self::Error>;
+}
+
 #[derive(Debug)]
 pub enum CommitResult {
     RootNotFound,

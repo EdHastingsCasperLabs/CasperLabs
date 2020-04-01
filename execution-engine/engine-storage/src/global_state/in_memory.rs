@@ -226,7 +226,7 @@ impl StateProvider for InMemoryGlobalState {
 
 #[cfg(test)]
 mod tests {
-    use types::{account::PublicKey, CLValue};
+    use types::{account::PublicKey, AccessRights, CLValue, URef};
 
     use super::*;
 
@@ -262,6 +262,44 @@ mod tests {
             TestPair {
                 key: Key::Account(PublicKey::ed25519_from([3u8; 32])),
                 value: StoredValue::CLValue(CLValue::from_t(3_i32).unwrap()),
+            },
+        ]
+    }
+
+    fn create_test_pairs_varied() -> [TestPair; 6] {
+        [
+            TestPair {
+                key: Key::Hash([0u8; 32]),
+                value: StoredValue::CLValue(CLValue::from_t(0u8).unwrap()),
+            },
+            TestPair {
+                key: Key::Account(PublicKey::ed25519_try_from(&[1u8; 32]).unwrap()),
+                value: StoredValue::CLValue(CLValue::from_t(1u8).unwrap()),
+            },
+            TestPair {
+                key: Key::URef(URef::new([0u8; 32], AccessRights::READ_ADD_WRITE)),
+                value: StoredValue::CLValue(CLValue::from_t(2u8).unwrap()),
+            },
+            TestPair {
+                key: Key::Local {
+                    seed: [0u8; 32],
+                    hash: [0u8; 32],
+                },
+                value: StoredValue::CLValue(CLValue::from_t(3u8).unwrap()),
+            },
+            TestPair {
+                key: Key::Local {
+                    seed: [1u8; 32],
+                    hash: [1u8; 32],
+                },
+                value: StoredValue::CLValue(CLValue::from_t(4u8).unwrap()),
+            },
+            TestPair {
+                key: Key::Local {
+                    seed: [1u8; 32],
+                    hash: [2u8; 32],
+                },
+                value: StoredValue::CLValue(CLValue::from_t(5u8).unwrap()),
             },
         ]
     }
@@ -377,5 +415,37 @@ mod tests {
         ];
         let (_, root_hash) = InMemoryGlobalState::from_pairs(correlation_id, &[]).unwrap();
         assert_eq!(expected_bytes, root_hash.to_vec())
+    }
+
+    #[test]
+    fn local_keys_returns_all_local_keys() {
+        let correlation_id = CorrelationId::new();
+        let test_pairs = create_test_pairs_varied();
+        let (state, root_hash) = InMemoryGlobalState::from_pairs(
+            correlation_id,
+            &test_pairs
+                .iter()
+                .cloned()
+                .map(|TestPair { key, value }| (key, value))
+                .collect::<Vec<(Key, StoredValue)>>(),
+        )
+        .unwrap();
+
+        let checkout = state.checkout(root_hash).unwrap().unwrap();
+
+        let key_0 = PublicKey::ed25519_try_from(&[0u8; 32]).unwrap();
+        let key_1 = PublicKey::ed25519_try_from(&[1u8; 32]).unwrap();
+        let key_2 = PublicKey::ed25519_try_from(&[2u8; 32]).unwrap();
+
+        let key_0_locals = checkout.local_keys(correlation_id, key_0).unwrap();
+        let key_1_locals = checkout.local_keys(correlation_id, key_1).unwrap();
+        let key_2_locals = checkout.local_keys(correlation_id, key_2).unwrap();
+
+        assert_eq!(key_0_locals.len(), 1);
+        assert_eq!(key_1_locals.len(), 2);
+        assert_eq!(key_2_locals.len(), 0);
+
+        assert_eq!(key_0_locals[0], test_pairs[3].key);
+        assert_eq!(key_1_locals, vec![test_pairs[4].key, test_pairs[5].key]);
     }
 }

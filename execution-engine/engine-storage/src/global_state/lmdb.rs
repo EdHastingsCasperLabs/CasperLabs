@@ -188,7 +188,7 @@ mod tests {
     use lmdb::DatabaseFlags;
     use tempfile::tempdir;
 
-    use types::{account::PublicKey, CLValue};
+    use types::{account::PublicKey, AccessRights, CLValue, URef};
 
     use crate::{
         trie_store::operations::{write, WriteResult},
@@ -233,8 +233,48 @@ mod tests {
         ]
     }
 
-    fn create_test_state() -> (LmdbGlobalState, Blake2bHash) {
-        let correlation_id = CorrelationId::new();
+    fn create_test_pairs_varied() -> [TestPair; 6] {
+        [
+            TestPair {
+                key: Key::Hash([0u8; 32]),
+                value: StoredValue::CLValue(CLValue::from_t(0u8).unwrap()),
+            },
+            TestPair {
+                key: Key::Account(PublicKey::ed25519_try_from(&[1u8; 32]).unwrap()),
+                value: StoredValue::CLValue(CLValue::from_t(1u8).unwrap()),
+            },
+            TestPair {
+                key: Key::URef(URef::new([0u8; 32], AccessRights::READ_ADD_WRITE)),
+                value: StoredValue::CLValue(CLValue::from_t(2u8).unwrap()),
+            },
+            TestPair {
+                key: Key::Local {
+                    seed: [0u8; 32],
+                    hash: [0u8; 32],
+                },
+                value: StoredValue::CLValue(CLValue::from_t(3u8).unwrap()),
+            },
+            TestPair {
+                key: Key::Local {
+                    seed: [1u8; 32],
+                    hash: [1u8; 32],
+                },
+                value: StoredValue::CLValue(CLValue::from_t(4u8).unwrap()),
+            },
+            TestPair {
+                key: Key::Local {
+                    seed: [1u8; 32],
+                    hash: [2u8; 32],
+                },
+                value: StoredValue::CLValue(CLValue::from_t(5u8).unwrap()),
+            },
+        ]
+    }
+
+    fn create_test_state_from_pairs(
+        correlation_id: CorrelationId,
+        test_pairs: &[TestPair],
+    ) -> (LmdbGlobalState, Blake2bHash) {
         let _temp_dir = tempdir().unwrap();
         let environment = Arc::new(
             LmdbEnvironment::new(&_temp_dir.path().to_path_buf(), *TEST_MAP_SIZE).unwrap(),
@@ -249,7 +289,7 @@ mod tests {
         {
             let mut txn = ret.environment.create_read_write_txn().unwrap();
 
-            for TestPair { key, value } in &create_test_pairs() {
+            for TestPair { key, value } in test_pairs {
                 match write::<_, _, _, LmdbTrieStore, error::Error>(
                     correlation_id,
                     &mut txn,
@@ -271,6 +311,12 @@ mod tests {
             txn.commit().unwrap();
         }
         (ret, current_root)
+    }
+
+    fn create_test_state() -> (LmdbGlobalState, Blake2bHash) {
+        let correlation_id = CorrelationId::new();
+        let test_pairs = create_test_pairs();
+        create_test_state_from_pairs(correlation_id, &test_pairs)
     }
 
     #[test]
@@ -362,5 +408,29 @@ mod tests {
                 .read(correlation_id, &test_pairs_updated[2].key)
                 .unwrap()
         );
+    }
+
+    #[test]
+    fn local_keys_returns_all_local_keys() {
+        let correlation_id = CorrelationId::new();
+        let test_pairs = create_test_pairs_varied();
+        let (state, root_hash) = create_test_state_from_pairs(correlation_id, &test_pairs);
+
+        let checkout = state.checkout(root_hash).unwrap().unwrap();
+
+        let key_0 = PublicKey::ed25519_try_from(&[0u8; 32]).unwrap();
+        let key_1 = PublicKey::ed25519_try_from(&[1u8; 32]).unwrap();
+        let key_2 = PublicKey::ed25519_try_from(&[2u8; 32]).unwrap();
+
+        let key_0_locals = checkout.local_keys(correlation_id, key_0).unwrap();
+        let key_1_locals = checkout.local_keys(correlation_id, key_1).unwrap();
+        let key_2_locals = checkout.local_keys(correlation_id, key_2).unwrap();
+
+        assert_eq!(key_0_locals.len(), 1);
+        assert_eq!(key_1_locals.len(), 2);
+        assert_eq!(key_2_locals.len(), 0);
+
+        assert_eq!(key_0_locals[0], test_pairs[3].key);
+        assert_eq!(key_1_locals, vec![test_pairs[4].key, test_pairs[5].key]);
     }
 }

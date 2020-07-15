@@ -5,13 +5,16 @@ import { Empty } from 'google-protobuf/google/protobuf/empty_pb';
 import { GrpcError } from './Errors';
 
 export default class DiagnosticsService {
-  constructor(
-    // Point at either at a URL on a different port where grpcwebproxy is listening,
-    // or use nginx to serve the UI files, the API and gRPC all on the same port without CORS.
-    private url: string
-  ) {
-  }
+  /**
+   * Constructor
+   *
+   * @param url Point at either at a URL on a different port where grpcwebproxy is listening, or use nginx to serve the UI files, the API and gRPC all on the same port without CORS.
+   */
+  constructor(private url: string) {}
 
+  /**
+   * Get the connected peer nodes
+   */
   listPeers(): Promise<Peers> {
     return new Promise<Peers>((resolve, reject) => {
       const request = new Empty();
@@ -29,4 +32,4 @@ export default class DiagnosticsService {
       });
     });
   }
-};
+}

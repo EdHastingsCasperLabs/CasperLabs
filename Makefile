@@ -34,7 +34,6 @@ all: \
 	cargo-package-all \
 	build-client \
 	build-node \
-	build-python-client 
 
 
 # Push the local artifacts to repositories.
@@ -44,7 +43,6 @@ publish: docker-push-all
 clean:
 	$(MAKE) -C execution-engine clean
 	sbt clean
-	cd integration-testing && rm -rf bundled_contracts system_contracts
 	cd explorer/grpc && rm -rf google io node_modules
 	cd explorer/sdk && rm -rf node_modules dist
 	cd explorer/ui && rm -rf node_modules build
@@ -56,7 +54,6 @@ docker-build-all: \
 	docker-build/node \
 	docker-build/client \
 	docker-build/execution-engine \
-	docker-build/integration-testing \
 	docker-build/key-generator \
 	docker-build/explorer \
 	docker-build/grpcwebproxy
@@ -71,7 +68,6 @@ docker-push-all: \
 docker-build/node: .make/docker-build/debian/node
 docker-build/client: .make/docker-build/debian/client
 docker-build/execution-engine: .make/docker-build/execution-engine
-docker-build/integration-testing: .make/docker-build/integration-testing
 docker-build/key-generator: .make/docker-build/key-generator
 docker-build/explorer: .make/docker-build/explorer
 docker-build/grpcwebproxy: .make/docker-build/grpcwebproxy
@@ -105,19 +101,6 @@ cargo-native-packager/%:
 		.make/sbt-deb/%
 	$(eval PROJECT = $*)
 	docker build -f $(PROJECT)/Dockerfile -t $(DOCKER_USERNAME)/$(PROJECT):$(DOCKER_LATEST_TAG) $(PROJECT)
-	mkdir -p $(dir $@) && touch $@
-
-# Dockerize the Integration Tests
-.make/docker-build/integration-testing: \
-		integration-testing/Dockerfile
-	$(eval IT_PATH = integration-testing)
-	cp -r protobuf $(IT_PATH)/
-	mkdir -p $(IT_PATH)/bundled_contracts
-	cp -r client/src/main/resources/*.wasm $(IT_PATH)/bundled_contracts/
-	mkdir -p $(IT_PATH)/system_contracts
-	cp -r ./execution-engine/target/wasm32-unknown-unknown/release/*.wasm $(IT_PATH)/system_contracts/
-	docker build -f $(IT_PATH)/Dockerfile -t $(DOCKER_USERNAME)/integration-testing:$(DOCKER_LATEST_TAG) $(IT_PATH)/
-	rm -rf $(IT_PATH)/protobuf
 	mkdir -p $(dir $@) && touch $@
 
 # Dockerize the Execution Engine.
@@ -290,10 +273,6 @@ client/src/main/resources/%.wasm: .make/contracts/%
 	mkdir -p $(dir $@)
 	cp execution-engine/target/wasm32-unknown-unknown/release/$*.wasm $@
 
-# Compile a contract and put it in the CLI client so they get packaged with the PyPi package.
-client-py/casperlabs_client/%.wasm: .make/contracts/%
-	cp execution-engine/target/wasm32-unknown-unknown/release/$*.wasm $@
-
 # Compile a contract and put it in the node resources so they get packaged with the JAR.
 node/src/main/resources/chainspec/genesis/%.wasm: .make/contracts/%
 	cp execution-engine/target/wasm32-unknown-unknown/release/$*.wasm $@
@@ -306,21 +285,10 @@ explorer/contracts/%.wasm: .make/contracts/%
 build-client: \
 	.make/sbt-stage/client
 
-build-python-client: \
-	build-client-py-contracts \
-	$(PROTO_SRC) \
-	$(shell find ./client-py/ -name "*.py"|grep -v _grpc.py)
-	client-py/build.sh
-
 build-client-contracts: \
 	client/src/main/resources/bonding.wasm \
 	client/src/main/resources/unbonding.wasm \
 	client/src/main/resources/transfer_to_account_u512.wasm
-
-build-client-py-contracts: \
-    client-py/casperlabs_client/bonding.wasm \
-    client-py/casperlabs_client/unbonding.wasm \
-    client-py/casperlabs_client/transfer_to_account_u512.wasm
 
 build-node: \
 	.make/sbt-stage/node
@@ -335,7 +303,7 @@ build-explorer: \
 
 build-explorer-contracts: \
 	explorer/contracts/transfer_to_account_u512.wasm \
-	explorer/contracts/faucet.wasm
+	explorer/contracts/faucet_stored.wasm
 
 # Get the .proto files for REST annotations for Github. This is here for reference about what to get from where, the files are checked in.
 # There were alternatives, like adding a reference to a Maven project called `googleapis-commons-protos` but it had version conflicts.

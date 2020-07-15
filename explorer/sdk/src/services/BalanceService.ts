@@ -3,26 +3,34 @@ import { BlockHash, ByteArray } from '../index';
 import { encodeBase16 } from '../lib/Conversions';
 import CasperService from './CasperService';
 
-/** Cache balance URef values for accounts so that on subsequent queries
- *  it only takes 1 state query not 4 to get the value.
+/**
+ * A service to query balance for accounts
  */
 export default class BalanceService {
   private balanceUrefs = new Map<string, Key.URef>();
 
   constructor(private casperService: CasperService) {}
 
+  /**
+   * Query balance for the specified account
+   *
+   * It will cache balance URef values for accounts so that on subsequent queries,
+   * it only takes 1 state query not 4 to get the value.
+   * @param blockHash
+   * @param accountPublicKeyHash
+   */
   async getAccountBalance(
     blockHash: BlockHash,
-    accountPublicKey: ByteArray
+    accountPublicKeyHash: ByteArray
   ): Promise<number | undefined> {
-    const hash = encodeBase16(accountPublicKey);
+    const hash = encodeBase16(accountPublicKeyHash);
     let balanceUref = this.balanceUrefs.get(hash);
 
     // Find the balance Uref and cache it if we don't have it.
     if (!balanceUref) {
       balanceUref = await this.casperService.getAccountBalanceUref(
         blockHash,
-        accountPublicKey
+        accountPublicKeyHash
       );
       if (balanceUref) {
         this.balanceUrefs.set(hash, balanceUref);

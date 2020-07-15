@@ -20,10 +20,12 @@ use engine_grpc_server::engine_server::{
     ipc::ExecuteRequest,
     ipc_grpc::{ExecutionEngineService, ExecutionEngineServiceClient},
 };
-use engine_test_support::internal::ExecuteRequestBuilder;
-use types::U512;
+use engine_test_support::internal::{DeployItemBuilder, ExecuteRequestBuilder, DEFAULT_PAYMENT};
+use types::{runtime_args, RuntimeArgs, U512};
 
 use casperlabs_engine_tests::profiling;
+
+use crate::profiling::TransferMode;
 
 const APP_NAME: &str = "Concurrent Executor";
 const ABOUT: &str =
@@ -57,8 +59,16 @@ const REQUEST_COUNT_ARG_DEFAULT: &str = "100";
 const REQUEST_COUNT_ARG_VALUE_NAME: &str = "NUM";
 const REQUEST_COUNT_ARG_HELP: &str = "Total number of 'ExecuteRequest's to send";
 
+const TRANSFER_MODE_ARG_NAME: &str = "transfer-mode";
+const TRANSFER_MODE_ARG_SHORT: &str = "m";
+const TRANSFER_MODE_ARG_DEFAULT: &str = "WASMLESS";
+const TRANSFER_MODE_ARG_VALUE_NAME: &str = "&str";
+const TRANSFER_MODE_ARG_HELP: &str = "Transfer mode [WASMLESS|WASM]";
+
 const CONTRACT_NAME: &str = "transfer_to_existing_account.wasm";
 const THREAD_PREFIX: &str = "client-worker-";
+const ARG_AMOUNT: &str = "amount";
+const ARG_TARGET: &str = "target";
 
 fn socket_arg() -> Arg<'static, 'static> {
     Arg::with_name(SOCKET_ARG_NAME)
@@ -96,11 +106,21 @@ fn request_count_arg() -> Arg<'static, 'static> {
         .help(REQUEST_COUNT_ARG_HELP)
 }
 
+fn transfer_mode_arg() -> Arg<'static, 'static> {
+    Arg::with_name(TRANSFER_MODE_ARG_NAME)
+        .long(TRANSFER_MODE_ARG_NAME)
+        .short(TRANSFER_MODE_ARG_SHORT)
+        .default_value(TRANSFER_MODE_ARG_DEFAULT)
+        .value_name(TRANSFER_MODE_ARG_VALUE_NAME)
+        .help(TRANSFER_MODE_ARG_HELP)
+}
+
 struct Args {
     socket: String,
     pre_state_hash: Vec<u8>,
     thread_count: usize,
     request_count: usize,
+    transfer_mode: TransferMode,
 }
 
 impl Args {
@@ -112,6 +132,7 @@ impl Args {
             .arg(pre_state_hash_arg())
             .arg(thread_count_arg())
             .arg(request_count_arg())
+            .arg(transfer_mode_arg())
             .get_matches();
 
         let socket = arg_matches
@@ -130,12 +151,17 @@ impl Args {
             .value_of(REQUEST_COUNT_ARG_NAME)
             .map(profiling::parse_count)
             .expect("Expected request count");
+        let transfer_mode = arg_matches
+            .value_of(TRANSFER_MODE_ARG_NAME)
+            .map(profiling::parse_transfer_mode)
+            .expect("Expected transfer mode");
 
         Args {
             socket,
             pre_state_hash,
             thread_count,
             request_count,
+            transfer_mode,
         }
     }
 }
@@ -318,17 +344,27 @@ impl Drop for ClientPool {
 }
 
 fn new_execute_request(args: &Args) -> ExecuteRequest {
-    let amount = U512::one();
-    let account_1_public_key = profiling::account_1_public_key();
-    let account_2_public_key = profiling::account_2_public_key();
-    ExecuteRequestBuilder::standard(
-        account_1_public_key,
-        CONTRACT_NAME,
-        (account_2_public_key, amount),
-    )
-    .with_pre_state_hash(&args.pre_state_hash)
-    .build()
-    .into()
+    let account_1_addr = profiling::account_1_account_hash();
+    let transfer_args = runtime_args! { ARG_TARGET => profiling::account_2_account_hash(), ARG_AMOUNT => U512::one() };
+    let deploy_item = match args.transfer_mode {
+        TransferMode::WASM => DeployItemBuilder::new()
+            .with_address(account_1_addr)
+            .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT })
+            .with_session_code(CONTRACT_NAME, transfer_args)
+            .with_authorization_keys(&[account_1_addr])
+            .build(),
+        TransferMode::WASMLESS => DeployItemBuilder::new()
+            .with_address(account_1_addr)
+            .with_empty_payment_bytes(runtime_args! {})
+            .with_transfer_args(transfer_args)
+            .with_authorization_keys(&[account_1_addr])
+            .build(),
+    };
+
+    ExecuteRequestBuilder::from_deploy_item(deploy_item)
+        .with_pre_state_hash(&args.pre_state_hash)
+        .build()
+        .into()
 }
 
 fn main() {
